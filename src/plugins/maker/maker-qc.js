@@ -46,9 +46,9 @@ let handler = async (m, { conn, text, usedPrefix, command }) => {
 
         await global.loading(m, conn);
 
-        const url = `https://api.nekolabs.web.id/canvas/quote-chat?text=${encodeURIComponent(
+        const url = `https://https://api.nexray.web.id/maker/qc?text=${encodeURIComponent(
             txt
-        )}&name=${encodeURIComponent(name)}&profile=${encodeURIComponent(ava)}&color=%23000000`;
+        )}&name=${encodeURIComponent(name)}&avatar=${encodeURIComponent(ava)}&color=Putih`;
 
         const res = await fetch(url);
         if (!res.ok) throw new Error("API request failed");
