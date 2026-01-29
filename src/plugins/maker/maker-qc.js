@@ -1,79 +1,64 @@
-/**
- * @file Quote chat sticker generator command handler
- * @module plugins/maker/quotechat
- * @license Apache-2.0
- * @author Naruya Izumi
- */
-
 import { sticker } from "#lib/sticker.js";
 
-/**
- * Generates quote chat stickers from text or quoted messages
- * @async
- * @function handler
- * @param {Object} m - Message object
- * @param {Object} conn - Connection object
- * @param {string} text - Message text
- * @param {string} usedPrefix - Command prefix used
- * @param {string} command - Command name
- * @returns {Promise<void>}
- *
- * @description
- * Creates stylish quote chat stickers with user profile picture and name.
- * Supports both direct text input and quoted messages.
- *
- * @features
- * - Generates quote chat stickers with profile pictures
- * - Supports both text input and quoted messages
- * - Uses NekoLabs Canvas API
- * - Applies custom sticker pack metadata
- * - Falls back to default avatar if no profile picture
- */
+const handler = async (m, { conn, text, usedPrefix, command }) => {
+  const commandPattern = new RegExp(`^\\${usedPrefix}${command}\\b\\s*`, "i");
 
-let handler = async (m, { conn, text, usedPrefix, command }) => {
-    try {
-        const raw = m.quoted?.text || text || "";
-        const txt = raw.replace(new RegExp(`^\\${usedPrefix}${command}\\s*`, "i"), "").trim();
+  const usageMessage = () =>
+    `Text is required.\nExample: ${usedPrefix}${command} Hello Ness`;
 
-        if (!txt) {
-            return m.reply(`Need text\nEx: ${usedPrefix + command} Hello World`);
-        }
+  try {
+    const sourceText = (m.quoted?.text || text || "").trim();
+    const qcText = sourceText.replace(commandPattern, "").trim();
 
-        const name = (await m.quoted?.name) || m.pushName || (await m.name) || "Anon";
-        const jid = m.quoted?.sender || m.sender;
-        const pp = await conn.profilePictureUrl(jid, "image").catch(() => null);
-        const ava = pp || "https://qu.ax/yqEpZ.jpg";
+    if (!qcText) return m.reply(usageMessage());
 
-        await global.loading(m, conn);
+    const displayName = (await m.quoted?.name) || m.pushName || (await m.name) || "Anonymous";
 
-        const url = `https://https://api.nexray.web.id/maker/qc?text=${encodeURIComponent(
-            txt
-        )}&name=${encodeURIComponent(name)}&avatar=${encodeURIComponent(ava)}&color=Putih`;
+    const targetJid = m.quoted?.sender || m.sender;
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("API request failed");
+    const profilePictureUrl = await conn
+      .profilePictureUrl(targetJid, "image")
+      .catch(() => null);
 
-        const buf = Buffer.from(await res.arrayBuffer());
-        const stc = await sticker(buf, {
-            packName: global.config.stickpack || "",
-            authorName: global.config.stickauth || "",
-        });
-
-        await conn.sendMessage(m.chat, { sticker: stc }, { quoted: m });
-    } catch (e) {
-        conn.logger.error(e);
-        m.reply(`Error: ${e.message}`);
-    } finally {
-        await global.loading(m, conn, true);
+    if (!profilePictureUrl) {
+      return m.reply("Cannot create QC: your WhatsApp profile picture is empty or hidden. Please set a profile picture (or allow access), then try again.");
     }
+
+    await global.loading(m, conn);
+    
+    const apiBaseUrl = "https://api.nexray.web.id/maker/qc";
+    const params = new URLSearchParams({
+      text: qcText,
+      name: displayName,
+      avatar: profilePictureUrl,
+      color: "Putih",
+    });
+
+    const apiUrl = `${apiBaseUrl}?${params.toString()}`;
+
+    const apiResponse = await fetch(apiUrl);
+    if (!apiResponse.ok) {
+      throw new Error(
+        `QC API error: ${apiResponse.status} ${apiResponse.statusText}`
+      );
+    }
+
+    const qcImageBuffer = Buffer.from(await apiResponse.arrayBuffer());
+
+    const stickerBuffer = await sticker(qcImageBuffer, {
+      packName: global.config.stickpack || "",
+      authorName: global.config.stickauth || "",
+    });
+
+    await conn.sendMessage(m.chat, { sticker: stickerBuffer }, { quoted: m });
+  } catch (err) {
+    conn.logger?.error?.(err);
+    return m.reply(`QC failed. ${err?.message || "Unknown error"}`);
+  } finally {
+    await global.loading(m, conn, true);
+  }
 };
 
-/**
- * Command metadata for help system
- * @property {Array<string>} help - Help text
- * @property {Array<string>} tags - Command categories
- * @property {RegExp} command - Command pattern matching
- */
 handler.help = ["qc"];
 handler.tags = ["maker"];
 handler.command = /^(qc)$/i;
